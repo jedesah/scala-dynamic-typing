@@ -14,8 +14,16 @@ class MainSpec extends Specification {
       ok
     }
     "work fine otherwise" in {
-      val a = dyn"5 + 6"
-      a === 11
+      "when dealing with references from Predeg" in {
+        val a = dyn"5 + 6"
+        a === 11
+      }
+      "not require qualifying local references" in {
+        case class Cat(name: String, age: Int)
+        val myCat = Cat("Fluf", 10)
+        val age = dyn"myCat.age"
+        age === 10
+      }
     }
   }
 } 
