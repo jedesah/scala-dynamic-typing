@@ -27,12 +27,12 @@ class MainSpec extends Specification with TypecheckMatchers {
         val age = runtimeTypecheck{"myCat.age"}
         age === 10
       }
-      "produces incorrect code" in {
-        runtimeTypecheck{"produceIncorrectCode"} must throwA[TypecheckException]
-      }
-      "macro expansion aborts" in {
-        runtimeTypecheck{"abortMacroExpansion"} must throwA[TypecheckException]
-      }
+    }
+    "fail at runtime if a macro produces code that does not typecheck" in {
+      runtimeTypecheck{"produceIncorrectCode"} must throwA[TypecheckException]
+    }
+    "fail at runtime if a macro aborts or otherwise throws an expection during expansion" in {
+      runtimeTypecheck{"abortMacroExpansion"} must throwA[TypecheckException]
     }
   }
 } 
