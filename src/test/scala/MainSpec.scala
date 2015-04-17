@@ -1,22 +1,22 @@
 package com.github.jedesah.typelevel.test
 
+import org.specs2.matcher.TypecheckMatchers
 import org.specs2.mutable._
-import shapeless.test.illTyped
+import org.specs2.execute._, Typecheck._
+
 
 import scala.reflect.macros.TypecheckException
 
-class MainSpec extends Specification {
+class MainSpec extends Specification with TypecheckMatchers {
 
   """dyn"code"""" should {
     "fail at compile time if a normal compile error" in {
-      illTyped { """runtimeTypecheck{ "5 ++ 6" }""" }
-      ok
+      typecheck { """runtimeTypecheck{ "5 ++ 6" }""" } must not succeed
     }
     "fail at compile time if it is completely invalid syntax'" in {
-      illTyped { """runtimeTypecheck{ "5..9&#" }""" }
-      ok
+      typecheck { """runtimeTypecheck{ "5..9&#" }""" } must not succeed
     }
-    "work fine otherwise" in {
+    "compile and return the value at runtime if a perfectly normal expression" >> {
       "when dealing with values from Predef" in {
         val a = runtimeTypecheck {"5 + 6"}
         a === 11
