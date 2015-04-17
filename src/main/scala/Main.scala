@@ -1,15 +1,21 @@
-package com.github.jedesah.typelevel
+package com.github.jedesah
+package typelevel
 
 import scala.collection.mutable
 import scala.language.experimental.macros
 import scala.reflect.macros.TypecheckException
 import scala.reflect.macros.blackbox.Context
+import utils.AugmentedTry
 
 package object test {
 
-  def runtimeTypecheck(identUnderTest: Any)(code: String) = macro failTypeCheckAtRuntime
+  def evalMacro(identUnderTest: Any)(code: String) = macro failTypeCheckAtRuntime
 
-  def runtimeTypecheck(code: String) = macro failMacroTypeCheckAtRuntime
+  def evalMacro(code: String) = macro evalMacroImpl
+
+  def evalTypelevel(code: String) = macro evalTypelevelImpl
+
+  def evalBoth(code: String) = macro evalBothImpl
   
   def produceIncorrectCode: Unit = macro produceIncorrectCodeImpl
   
@@ -24,22 +30,47 @@ package object test {
     c.abort(c.enclosingPosition, "Doomed to fail!")
   }
 
-  def failMacroTypeCheckAtRuntime(c: Context)(code: c.Expr[String]): c.Expr[Any] = {
+  def evalMacroImpl(c: Context)(code: c.Expr[String]): c.Expr[Any] = {
+    eval(deferMacro = true, deferImplicit = false)(c)(code)
+  }
+
+  def evalTypelevelImpl(c: Context)(code: c.Expr[String]): c.Expr[Any] = {
+    eval(deferMacro = false, deferImplicit = true)(c)(code)
+  }
+
+  def evalBothImpl(c: Context)(code: c.Expr[String]): c.Expr[Any] = {
+    eval(deferMacro = true, deferImplicit = true)(c)(code)
+  }
+
+  def eval(deferMacro: Boolean, deferImplicit: Boolean)(c: Context)(code: c.Expr[String]): c.Expr[Any] = {
+    assume(deferMacro || deferImplicit)
     import c.universe._
-    val codeString = code.tree.asInstanceOf[Literal].value.value.asInstanceOf[String]
-    val ast = c.parse(codeString)
-    val typeCheckResult = util.Try(c.typecheck(ast, withMacrosDisabled = true)).recover{
-      case t: TypecheckException if t.msg.startsWith("could not find implicit value") => "bogus Value"
-    }
-    if (typeCheckResult.isFailure) throw typeCheckResult.failed.get
-    val actualCode = util.Try(c.typecheck(ast)).recover{ case t: TypecheckException =>
-      new TypecheckException(NoPosition, t.msg)
-      val msg = Literal(Constant(t.getMessage))
-      c.warning(c.enclosingPosition, t.getMessage)
+    def warnAndFailAtRuntime(ex: TypecheckException) = {
+      val msg = Literal(Constant(ex.getMessage))
+      c.warning(c.enclosingPosition, ex.getMessage)
       q"""throw TypecheckException(null,$msg)"""
     }
-    c.Expr(actualCode.get)
+    code.tree match {
+      case Literal(Constant(codeString: String)) =>
+        val ast = c.parse(codeString)
+        // Figure out if the code fails without any macro expansion or missing implicits
+        val noMacrosResult = util.Try(c.typecheck(ast, withMacrosDisabled = true))
+        val newCode: Tree = noMacrosResult.failure.map {
+          case error: TypecheckException if isImplicitMissingError(error) && deferImplicit => warnAndFailAtRuntime(error)
+          case other: TypecheckException => throw other
+        }.getOrElse {
+          util.Try(c.typecheck(ast)).recover { case t: TypecheckException =>
+            if (deferMacro) warnAndFailAtRuntime(t)
+            else throw t
+          }.get
+        }
+        c.Expr(newCode)
+      case _ => c.abort(c.enclosingPosition, "This macro only works on String literals")
+    }
   }
+
+  // For now, a missing implicit error is any TypecheckException that starts with a certain phrasing
+  def isImplicitMissingError(ex: TypecheckException) = ex.msg.startsWith("could not find implicit value")
 
   def failTypeCheckAtRuntime(c: Context)(identUnderTest: c.Expr[Any])(code: c.Expr[String]): c.Expr[Any] = {
     import c.universe._
