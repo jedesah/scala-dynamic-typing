@@ -28,7 +28,9 @@ package object test {
     import c.universe._
     val codeString = code.tree.asInstanceOf[Literal].value.value.asInstanceOf[String]
     val ast = c.parse(codeString)
-    val typeCheckResult = util.Try(c.typecheck(ast, withMacrosDisabled = true))
+    val typeCheckResult = util.Try(c.typecheck(ast, withMacrosDisabled = true)).recover{
+      case t: TypecheckException if t.msg.startsWith("could not find implicit value") => "bogus Value"
+    }
     if (typeCheckResult.isFailure) throw typeCheckResult.failed.get
     val actualCode = util.Try(c.typecheck(ast)).recover{ case t: TypecheckException =>
       new TypecheckException(NoPosition, t.msg)
